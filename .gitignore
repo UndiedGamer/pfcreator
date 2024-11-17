@@ -1,5 +1,6 @@
 # Cache, dist and node_modules
 .zig-cache
+.DS_Store
 node_modules
 zig-out
 main.zig.old
