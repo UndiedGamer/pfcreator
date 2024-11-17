@@ -1,0 +1,15 @@
+# Cache, dist and node_modules
+.zig-cache
+node_modules
+zig-out
+main.zig.old
+
+# Output files
+a.out
+main
+*.docx
+output.json
+
+# Example files
+questions.txt
+format.yml
