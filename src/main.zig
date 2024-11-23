@@ -107,7 +107,6 @@ pub fn main() !void {
                     _ = try compile.wait();
                 }
 
-                // Run with output capture
                 if (builtin.os.tag == .windows) {
                     const ps_cmd = try std.fmt.allocPrint(allocator, "& './a.out' | Tee-Object -FilePath '{s}'", .{tmp_output_path});
                     defer allocator.free(ps_cmd);
@@ -117,7 +116,7 @@ pub fn main() !void {
                     _ = try run_process.wait();
                 } else {
                     // Use script command with explicit file
-                    const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} ./a.out", .{ tmp_output_path });
+                    const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} ./a.out", .{tmp_output_path});
                     defer allocator.free(shell_cmd);
 
                     var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
@@ -130,13 +129,14 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, extension, ".py")) {
                 const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
                 defer allocator.free(script_path);
+                if (builtin.os.tag == .windows) {} else {
+                    const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
+                    defer allocator.free(shell_cmd);
 
-                const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s} && cat {s} | pbcopy", .{ tmp_output_path, script_path, tmp_output_path });
-                defer allocator.free(shell_cmd);
-
-                var shell_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                try shell_process.spawn();
-                _ = try shell_process.wait();
+                    var shell_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
+                    try shell_process.spawn();
+                    _ = try shell_process.wait();
+                }
 
                 // Read output file directly
                 output = try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize));

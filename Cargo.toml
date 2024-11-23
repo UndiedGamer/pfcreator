@@ -1,0 +1,12 @@
+[package]
+name = "helpers"
+version = "0.1.0"
+edition = "2021"
+default_run = "helpers"
+
+[[bin]]
+name = "create-docx"
+path = "helpers/main.rs"
+
+[dependencies]
+
