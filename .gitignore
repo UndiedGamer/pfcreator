@@ -14,4 +14,4 @@ output.json
 
 # Example files
 questions.txt
-format.yml
+format.toml
