@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-fn sortFiles(_: void, lhs: std.fs.Dir.Entry, rhs: std.fs.Dir.Entry) bool {
+fn compareFileNames(_: void, lhs: std.fs.Dir.Entry, rhs: std.fs.Dir.Entry) bool {
     return std.mem.order(u8, lhs.name, rhs.name).compare(std.math.CompareOperator.lt);
 }
 
@@ -21,14 +21,14 @@ fn processOutput(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return result.toOwnedSlice();
 }
 
-pub fn main() !void {
-    const FEntry = struct {
-        extension: []const u8,
-        code: []const u8,
-        index: usize,
-        output: []const u8,
-    };
+const FEntry = struct {
+    extension: []const u8,
+    code: []const u8,
+    index: usize,
+    output: []const u8,
+};
 
+pub fn main() !void {
     // Get command line arguments
     const allocator = std.heap.page_allocator;
     var args_it = std.process.args();
@@ -51,8 +51,12 @@ pub fn main() !void {
 
     const env_map = std.process.getEnvMap(allocator) catch unreachable;
     const home = env_map.get("HOME") orelse "";
-    const full_dir_path = std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" }) catch "";
-    const questions_file = std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "questions.txt" }) catch "";
+    defer env_map.deinit();
+    const full_dir_path = if (std.fs.path.isAbsolute(dir_path))
+        try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/" })
+    else
+        try std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" });
+    const questions_file = try std.fs.path.join(allocator, &[_][]const u8{ full_dir_path, "questions.txt" });
     std.debug.print("Dir path: {s}\nFile path: {s}", .{ full_dir_path, questions_file });
 
     const raw_questions = try std.fs.cwd().readFileAlloc(allocator, questions_file, std.math.maxInt(usize));
@@ -76,7 +80,7 @@ pub fn main() !void {
         try dir_entries.append(entry);
     }
 
-    std.mem.sort(std.fs.Dir.Entry, dir_entries.items, {}, sortFiles);
+    std.mem.sort(std.fs.Dir.Entry, dir_entries.items, {}, compareFileNames);
 
     var entries = std.StringHashMap(FEntry).init(allocator);
     defer {
@@ -112,6 +116,9 @@ pub fn main() !void {
             {
                 const tmp_file = try std.fs.cwd().createFile(tmp_output_path, .{});
                 tmp_file.close();
+                defer {
+                    std.fs.cwd().deleteFile(tmp_output_path) catch {};
+                }
             }
 
             var output: []const u8 = "";
@@ -128,6 +135,7 @@ pub fn main() !void {
                     try compile.spawn();
                     _ = try compile.wait();
                 }
+                defer std.fs.cwd().deleteFile("./a.out") catch {};
 
                 if (builtin.os.tag == .windows) {
                     const ps_cmd = try std.fmt.allocPrint(allocator, "& './a.out' | Tee-Object -FilePath '{s}'", .{tmp_output_path});
@@ -151,13 +159,20 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, extension, ".py")) {
                 const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", entry.name });
                 defer allocator.free(script_path);
-                if (builtin.os.tag == .windows) {} else {
+                if (builtin.os.tag == .windows) {
+                    const ps_cmd = try std.fmt.allocPrint(allocator, "python -u {s} | Tee-Object -FilePath '{s}'", .{ script_path, tmp_output_path });
+                    defer allocator.free(ps_cmd);
+
+                    var run_process = std.process.Child.init(&[_][]const u8{ "pwsh", "-Command", ps_cmd }, allocator);
+                    try run_process.spawn();
+                    _ = try run_process.wait();
+                } else {
                     const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
                     defer allocator.free(shell_cmd);
 
-                    var shell_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                    try shell_process.spawn();
-                    _ = try shell_process.wait();
+                    var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
+                    try run_process.spawn();
+                    _ = try run_process.wait();
                 }
 
                 // Read output file directly
