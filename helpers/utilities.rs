@@ -1,6 +1,8 @@
 use docx_rs::*;
 use serde::{Deserialize, Serialize};
 
+use crate::ZigOutput;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DocumentConfig {
     pub header: Paragraph,
@@ -83,7 +85,7 @@ impl Paragraph {
         }
     }
 
-    pub fn to_docx(&self) -> docx_rs::Paragraph {
+    pub fn to_docx(&self, replacer: &ZigOutput) -> Vec<docx_rs::Paragraph> {
         let mut run = Run::new().size(self.size * 2);
 
         if self.bold {
@@ -94,26 +96,59 @@ impl Paragraph {
             run = run.italic()
         }
 
-        run = run
-            .underline(if self.underline { "_" } else { "" })
-            .color(&self.color.replace("#", ""))
-            .fonts(
-                RunFonts::new()
-                    .east_asia(&self.font)
-                    .ascii(&self.font)
-                    .hi_ansi(&self.font),
-            )
-            .add_text(&self.text);
+        let replaced = self.replace_text(replacer);
 
-        docx_rs::Paragraph::new()
-            .align(self.get_alignment())
-            .add_run(run)
+        let mut paragraphs: Vec<docx_rs::Paragraph> = Vec::new();
+        let lines = replaced.split("\n");
+
+        for line in lines {
+            let inner_run = run.clone()
+                .underline(if self.underline { "_" } else { "" })
+                .color(&self.color.replace("#", ""))
+                .fonts(
+                    RunFonts::new()
+                        .east_asia(&self.font)
+                        .ascii(&self.font)
+                        .hi_ansi(&self.font),
+                )
+                .add_text(line);
+
+            let p = docx_rs::Paragraph::new()
+                .align(self.get_alignment())
+                .add_run(inner_run);
+            paragraphs.push(p);
+        }
+
+        paragraphs
+    }
+
+    pub fn replace_text(&self, replacer: &ZigOutput) -> String {
+        let mut replaced = self.text.clone();
+        if replaced.contains("{n}") {
+            replaced = replaced.replace("{n}", &(replacer.index + 1).to_string());
+        }
+
+        if replaced.contains("{question") {
+            replaced = replaced.replace("{question}", &replacer.question)
+        }
+
+        if replaced.contains("{solution}") {
+            replaced = replaced.replace("{solution}", &replacer.code)
+        }
+
+        if replaced.contains("{output}") {
+            replaced = replaced.replace("{output}", &replacer.output)
+        }
+
+        replaced
     }
 }
 
 impl SectionWithTitle {
-    pub fn to_docx(&self) -> Vec<docx_rs::Paragraph> {
-        vec![self.title.to_docx(), self.content.to_docx()]
+    pub fn to_docx(&self, replacer: &ZigOutput) -> Vec<docx_rs::Paragraph> {
+            let mut paragraphs = self.title.to_docx(&replacer);
+            paragraphs.extend(self.content.to_docx(&replacer));
+            paragraphs
     }
 }
 
@@ -128,24 +163,29 @@ impl DocumentConfig {
         }
     }
 
-    pub fn to_docx(&self) -> Vec<docx_rs::Paragraph> {
-        let mut paragraphs = Vec::new();
-
-        paragraphs.push(self.header.to_docx());
-        paragraphs.push(self.question.to_docx());
-        paragraphs.extend(self.solution.to_docx());
-        paragraphs.extend(self.output.to_docx());
-        paragraphs.push(self.footer.to_docx());
-
-        paragraphs
-    }
-
-    pub fn create_document(&self) -> docx_rs::Docx {
+    pub fn create_document(&self, zig_output: Vec<ZigOutput>) -> docx_rs::Docx {
         let mut doc = Docx::new();
 
-        // Add all paragraphs to the document
-        for p in self.to_docx() {
-            doc = doc.add_paragraph(p);
+        for (index, parsed) in zig_output.iter().enumerate() {
+            let mut paragraphs = Vec::new();
+
+            paragraphs.extend(self.header.to_docx(&parsed));
+            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            paragraphs.extend(self.question.to_docx(&parsed));
+            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            paragraphs.extend(self.solution.to_docx(&parsed));
+            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            paragraphs.extend(self.output.to_docx(&parsed));
+            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            paragraphs.extend(self.footer.to_docx(&parsed));
+            if index != zig_output.len() - 1 {
+                paragraphs
+                .push(docx_rs::Paragraph::new().add_run(Run::new().add_break(BreakType::Page)));
+            }
+
+            for p in paragraphs {
+                doc = doc.add_paragraph(p);
+            }
         }
 
         doc
@@ -180,7 +220,7 @@ impl Default for SectionWithTitle {
     }
 }
 
-pub fn create_document_from_config(config: &DocumentConfig) -> XMLDocx {
-    let doc = config.create_document();
+pub fn create_document_from_config(config: &DocumentConfig, zig_output: Vec<ZigOutput>) -> XMLDocx {
+    let doc = config.create_document(zig_output);
     doc.build()
 }
