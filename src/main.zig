@@ -5,6 +5,22 @@ fn sortFiles(_: void, lhs: std.fs.Dir.Entry, rhs: std.fs.Dir.Entry) bool {
     return std.mem.order(u8, lhs.name, rhs.name).compare(std.math.CompareOperator.lt);
 }
 
+fn processOutput(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var result = std.ArrayList(u8).init(allocator);
+    var i: usize = 0;
+
+    while (i < input.len) {
+        if (input[i] == '\x08' and result.items.len > 0) {
+            _ = result.pop();
+        } else if (input[i] != '\x08') {
+            try result.append(input[i]);
+        }
+        i += 1;
+    }
+
+    return result.toOwnedSlice();
+}
+
 pub fn main() !void {
     const FEntry = struct {
         extension: []const u8,
@@ -33,7 +49,13 @@ pub fn main() !void {
         return;
     };
 
-    const raw_questions = try std.fs.cwd().readFileAlloc(allocator, "./questions.txt", std.math.maxInt(usize));
+    const env_map = std.process.getEnvMap(allocator) catch unreachable;
+    const home = env_map.get("HOME") orelse "";
+    const full_dir_path = std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" }) catch "";
+    const questions_file = std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "questions.txt" }) catch "";
+    std.debug.print("Dir path: {s}\nFile path: {s}", .{ full_dir_path, questions_file });
+
+    const raw_questions = try std.fs.cwd().readFileAlloc(allocator, questions_file, std.math.maxInt(usize));
     defer allocator.free(raw_questions);
     var questions = std.mem.split(u8, raw_questions, "\n---\n");
     var qal = std.ArrayList([]const u8).init(allocator);
@@ -46,7 +68,7 @@ pub fn main() !void {
     var dir_entries = std.ArrayList(std.fs.Dir.Entry).init(std.heap.page_allocator);
     defer dir_entries.deinit();
 
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
+    var dir = try std.fs.cwd().openDir(full_dir_path, .{});
     defer dir.close();
 
     var dir_it = dir.iterate();
@@ -95,7 +117,7 @@ pub fn main() !void {
             var output: []const u8 = "";
 
             if (std.mem.eql(u8, extension, ".cpp")) {
-                const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
+                const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", entry.name });
                 defer allocator.free(script_path);
 
                 // Compile with explicit output handling
@@ -125,9 +147,9 @@ pub fn main() !void {
                 }
 
                 // Read output file directly
-                output = try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize));
+                output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
             } else if (std.mem.eql(u8, extension, ".py")) {
-                const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
+                const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", entry.name });
                 defer allocator.free(script_path);
                 if (builtin.os.tag == .windows) {} else {
                     const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
@@ -139,7 +161,7 @@ pub fn main() !void {
                 }
 
                 // Read output file directly
-                output = try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize));
+                output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
             }
 
             try entries.put(qal.items[index], FEntry{
@@ -187,7 +209,7 @@ pub fn main() !void {
     try writer.writeByte(']');
 
     // Write to file with explicit sync
-    const file = try std.fs.cwd().createFile("output.json", .{});
+    const file = try dir.createFile("output.json", .{});
     defer file.close();
     try file.writeAll(json_array.items);
     try file.sync();
