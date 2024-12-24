@@ -40,44 +40,66 @@ pub fn main() !void {
     // Get the extension
     const extension_arg = args_it.next() orelse {
         std.debug.print("Usage: <program> <extension> <folder>\n", .{});
-        return;
+        std.process.exit(1);
     };
 
     // Get the directory path
     const dir_path = args_it.next() orelse {
         std.debug.print("Usage: <program> <extension> <folder>\n", .{});
-        return;
+        std.process.exit(1);
     };
 
-    const env_map = std.process.getEnvMap(allocator) catch unreachable;
+    const env_map = std.process.getEnvMap(allocator) catch {
+        std.debug.print("Failed to get environment variables\n", .{});
+        std.process.exit(1);
+    };
+
     const home = env_map.get("HOME") orelse "";
+
     const full_dir_path = if (std.fs.path.isAbsolute(dir_path))
         try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/" })
     else
-        try std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" });
+        std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" }) catch {
+            std.debug.print("Failed to construct directory path\n", .{});
+            std.process.exit(1);
+        };
 
+    defer allocator.free(full_dir_path);
     const questions_file = try std.fs.path.join(allocator, &[_][]const u8{ full_dir_path, "questions.txt" });
-    std.debug.print("Dir path: {s}\nFile path: {s}", .{ full_dir_path, questions_file });
+    defer allocator.free(questions_file);
 
-    const raw_questions = try std.fs.cwd().readFileAlloc(allocator, questions_file, std.math.maxInt(usize));
+    const raw_questions = std.fs.cwd().readFileAlloc(allocator, questions_file, std.math.maxInt(usize)) catch {
+        std.debug.print("Failed to read questions file\n", .{});
+        std.process.exit(1);
+    };
+
     defer allocator.free(raw_questions);
     var questions = std.mem.split(u8, raw_questions, "\n---\n");
     var qal = std.ArrayList([]const u8).init(allocator);
     defer qal.deinit();
 
     while (questions.next()) |question| {
-        try qal.append(question);
+        qal.append(question) catch {
+            std.debug.print("Failed to append question\n", .{});
+            std.process.exit(1);
+        };
     }
 
     var dir_entries = std.ArrayList(std.fs.Dir.Entry).init(std.heap.page_allocator);
     defer dir_entries.deinit();
 
-    var dir = try std.fs.cwd().openDir(full_dir_path, .{});
+    var dir = std.fs.cwd().openDir(full_dir_path, .{}) catch {
+        std.debug.print("Failed to open directory\n", .{});
+        std.process.exit(1);
+    };
     defer dir.close();
 
     var dir_it = dir.iterate();
     while (try dir_it.next()) |entry| {
-        try dir_entries.append(entry);
+        dir_entries.append(entry) catch {
+            std.debug.print("Failed to append directory entry\n", .{});
+            std.process.exit(1);
+        };
     }
 
     std.mem.sort(std.fs.Dir.Entry, dir_entries.items, {}, compareFileNames);
@@ -103,8 +125,14 @@ pub fn main() !void {
             }
 
             std.debug.print("\n=== Processing file: {s} ===\n", .{entry.name});
-            var file = try dir.openFile(entry.name, .{});
-            const content = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+            var file = dir.openFile(entry.name, .{}) catch {
+                std.debug.print("Failed to open file: {s}\n", .{entry.name});
+                std.process.exit(1);
+            };
+            const content = file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch {
+                std.debug.print("Failed to read file: {s}\n", .{entry.name});
+                std.process.exit(1);
+            };
             file.close();
 
             // Create a temporary file for output capture
@@ -133,7 +161,10 @@ pub fn main() !void {
                     var compile = std.process.Child.init(&[_][]const u8{ "g++", script_path, "-o", "./a.out" }, allocator);
                     compile.stdout_behavior = .Pipe;
                     compile.stderr_behavior = .Pipe;
-                    try compile.spawn();
+                    compile.spawn() catch {
+                        std.debug.print("Failed to compile file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
                     _ = try compile.wait();
                 }
                 defer std.fs.cwd().deleteFile("./a.out") catch {};
@@ -143,7 +174,10 @@ pub fn main() !void {
                     defer allocator.free(ps_cmd);
 
                     var run_process = std.process.Child.init(&[_][]const u8{ "pwsh", "-Command", ps_cmd }, allocator);
-                    try run_process.spawn();
+                    run_process.spawn() catch {
+                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
                     _ = try run_process.wait();
                 } else {
                     // Use script command with explicit file
@@ -151,7 +185,10 @@ pub fn main() !void {
                     defer allocator.free(shell_cmd);
 
                     var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                    try run_process.spawn();
+                    run_process.spawn() catch {
+                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
                     _ = try run_process.wait();
                 }
 
@@ -165,14 +202,20 @@ pub fn main() !void {
                     defer allocator.free(ps_cmd);
 
                     var run_process = std.process.Child.init(&[_][]const u8{ "pwsh", "-Command", ps_cmd }, allocator);
-                    try run_process.spawn();
+                    run_process.spawn() catch {
+                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
                     _ = try run_process.wait();
                 } else {
                     const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
                     defer allocator.free(shell_cmd);
 
                     var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                    try run_process.spawn();
+                    run_process.spawn() catch {
+                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
                     _ = try run_process.wait();
                 }
 
@@ -230,4 +273,18 @@ pub fn main() !void {
     defer file.close();
     try file.writeAll(json_array.items);
     try file.sync();
+
+    var rust_process = std.process.Child.init(&[_][]const u8{ "./create-docx", dir_path }, allocator);
+    rust_process.stderr_behavior = .Pipe;
+    rust_process.stdout_behavior = .Pipe;
+
+    try rust_process.spawn();
+    const result = try rust_process.wait();
+
+    if (result != .Exited or result.Exited != 0) {
+        const stderr = try rust_process.stderr.?.reader().readAllAlloc(allocator, 10_000);
+        defer allocator.free(stderr);
+        std.log.err("Rust process failed: {s}", .{stderr});
+        return error.RustProcessFailed;
+    }
 }
