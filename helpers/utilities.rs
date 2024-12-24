@@ -9,7 +9,8 @@ pub struct DocumentConfig {
     pub question: Paragraph,
     pub solution: SectionWithTitle,
     pub output: SectionWithTitle,
-    pub footer: Paragraph,
+    #[serde(default)]
+    pub footer: Option<Paragraph>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,7 +103,8 @@ impl Paragraph {
         let lines = replaced.split("\n");
 
         for line in lines {
-            let inner_run = run.clone()
+            let inner_run = run
+                .clone()
                 .underline(if self.underline { "_" } else { "" })
                 .color(&self.color.replace("#", ""))
                 .fonts(
@@ -146,9 +148,9 @@ impl Paragraph {
 
 impl SectionWithTitle {
     pub fn to_docx(&self, replacer: &ZigOutput) -> Vec<docx_rs::Paragraph> {
-            let mut paragraphs = self.title.to_docx(&replacer);
-            paragraphs.extend(self.content.to_docx(&replacer));
-            paragraphs
+        let mut paragraphs = self.title.to_docx(&replacer);
+        paragraphs.extend(self.content.to_docx(&replacer));
+        paragraphs
     }
 }
 
@@ -159,7 +161,7 @@ impl DocumentConfig {
             question: Paragraph::default(),
             solution: SectionWithTitle::default(),
             output: SectionWithTitle::default(),
-            footer: Paragraph::default(),
+            footer: None,
         }
     }
 
@@ -177,10 +179,14 @@ impl DocumentConfig {
             paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
             paragraphs.extend(self.output.to_docx(&parsed));
             paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
-            paragraphs.extend(self.footer.to_docx(&parsed));
+
+            if let Some(footer) = &self.footer {
+                paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+                paragraphs.extend(footer.to_docx(&parsed));
+            }
             if index != zig_output.len() - 1 {
                 paragraphs
-                .push(docx_rs::Paragraph::new().add_run(Run::new().add_break(BreakType::Page)));
+                    .push(docx_rs::Paragraph::new().add_run(Run::new().add_break(BreakType::Page)));
             }
 
             for p in paragraphs {
