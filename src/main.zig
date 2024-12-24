@@ -51,7 +51,6 @@ pub fn main() !void {
 
     const env_map = std.process.getEnvMap(allocator) catch unreachable;
     const home = env_map.get("HOME") orelse "";
-    defer env_map.deinit();
     const full_dir_path = if (std.fs.path.isAbsolute(dir_path))
         try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/" })
     else
@@ -95,7 +94,8 @@ pub fn main() !void {
     const extension = try std.mem.concat(allocator, u8, &[_][]const u8{ ".", extension_arg });
     defer allocator.free(extension);
 
-    for (dir_entries.items, 0..) |entry, index| {
+    var index: usize = 0;
+    for (dir_entries.items) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, extension)) {
             if (index >= qal.items.len) {
                 std.debug.print("Warning: More files than questions found!\n", .{});
@@ -186,6 +186,7 @@ pub fn main() !void {
                 .index = index,
                 .output = output,
             });
+            index += 1;
         }
     }
 
