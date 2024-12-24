@@ -274,7 +274,12 @@ pub fn main() !void {
     try file.writeAll(json_array.items);
     try file.sync();
 
-    var rust_process = std.process.Child.init(&[_][]const u8{ "./create-docx", dir_path }, allocator);
+    const rust_executable_path = if (builtin.mode == .Debug)
+        "target/release/create-docx"
+    else
+        "./create-docx";
+
+    var rust_process = std.process.Child.init(&[_][]const u8{ rust_executable_path, dir_path }, allocator);
     rust_process.stderr_behavior = .Pipe;
     rust_process.stdout_behavior = .Pipe;
 
