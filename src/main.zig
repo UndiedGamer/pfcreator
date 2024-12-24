@@ -56,6 +56,7 @@ pub fn main() !void {
         try std.mem.concat(allocator, u8, &[_][]const u8{ dir_path, "/" })
     else
         try std.mem.concat(allocator, u8, &[_][]const u8{ home, "/", dir_path, "/" });
+
     const questions_file = try std.fs.path.join(allocator, &[_][]const u8{ full_dir_path, "questions.txt" });
     std.debug.print("Dir path: {s}\nFile path: {s}", .{ full_dir_path, questions_file });
 
