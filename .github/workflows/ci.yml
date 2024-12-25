@@ -99,4 +99,9 @@ jobs:
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.zig-target }} -freference-trace
 
       - name: Build Rust Project
-        run: cargo build --verbose --release --target ${{ matrix.target }}
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
