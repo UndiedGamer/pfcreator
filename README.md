@@ -23,6 +23,7 @@
 1. **Code Files:** Put all your `.cpp` or `.py` files into a single folder.
 > [!IMPORTANT]  
 > Pfcreator works with either `.cpp` (C++) or `.py` (Python) files at a time, not both simultaneously.
+
 2. **`questions.txt`:**  In the same folder, create a file named `questions.txt`. Write each practical question, followed by a line of `---` to separate them. Like this:
 
     ```
