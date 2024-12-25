@@ -67,7 +67,12 @@ jobs:
         run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }} -freference-trac
 
       - name: Build Rust Project
-        run: cargo build --verbose --release --target ${{ matrix.target }}
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: build
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
 
       - name: Package Artifacts
         shell: bash
@@ -84,7 +89,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          name: pfcreator-${{ matrix.os }}-${{ matrix.arch }}
           path: artifacts/
 
   publish:
@@ -104,9 +109,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to crates.io
-        if: success()
-        run: cargo publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
