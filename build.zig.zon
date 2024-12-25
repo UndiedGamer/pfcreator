@@ -22,12 +22,7 @@
     // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
-    .dependencies = .{
-        .clipboard = .{
-            .url = "https://github.com/dgv/clipboard/archive/refs/heads/main.zip",
-            .hash = "1220a91ef68f63a58a45d307795ee8629d1d6e93aa021cb1c869ecebe579f24393b6",
-        },
-    },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

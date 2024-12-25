@@ -31,7 +31,10 @@ const FEntry = struct {
 pub fn main() !void {
     // Get command line arguments
     const allocator = std.heap.page_allocator;
-    var args_it = std.process.args();
+    var args_it = std.process.argsWithAllocator(allocator) catch {
+        std.debug.print("Failed to get command line arguments\n", .{});
+        std.process.exit(1);
+    };
     defer args_it.deinit();
 
     // Skip the program name

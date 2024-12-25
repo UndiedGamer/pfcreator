@@ -19,23 +19,25 @@ jobs:
           - os: ubuntu-latest
             arch: x64
             target: x86_64-unknown-linux-gnu
+            zig-target: x86_64-linux-gnu
           - os: ubuntu-latest
             arch: arm64
             target: aarch64-unknown-linux-gnu
+            zig-target: aarch64-linux-gnu
           # Windows builds
           - os: windows-latest
             arch: x64
             target: x86_64-pc-windows-msvc
+            zig-target: x86_64-windows-msvc
           - os: windows-latest
             arch: arm64
             target: aarch64-pc-windows-msvc
+            zig-target: aarch64-windows-msvc
           # macOS builds
           - os: macos-latest
-            arch: x64
+            arch: arm64
             target: x86_64-apple-darwin
-          - os: macos-latest
-            arch: x86
-            target: i686-apple-darwin
+            zig-target: macos
 
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +64,7 @@ jobs:
           key: zig-${{ matrix.os }}-${{ matrix.arch }}-${{ env.ZIG_VERSION }}
 
       - name: Build Zig Project
-        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} -freference-trac
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }} -freference-trac
 
       - name: Build Rust Project
         run: cargo build --verbose --release --target ${{ matrix.target }}
