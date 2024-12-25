@@ -69,7 +69,7 @@ jobs:
           - os: macos-latest
             arch: arm64
             target: x86_64-apple-darwin
-            zig-target: macos
+            zig-target: aarch64-macos-none
 
     steps:
       - uses: actions/checkout@v4
