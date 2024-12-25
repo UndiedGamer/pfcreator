@@ -108,3 +108,5 @@ These are special tags in your `format.toml` that Pfcreator replaces:
 -   `{question}`: The question from `questions.txt`.
 -   `{solution}`: Your code.
 -   `{output}`: The output of your code.
+
+Note to self: add windows deprecation in future section here
