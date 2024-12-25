@@ -2,6 +2,12 @@ name: Continous Integration
 
 on:
   push:
+    paths:
+      - 'src/**'
+      - 'helpers/**'
+      - 'Cargo.toml'
+      - 'build.zig'
+      - '.github/workflows/**'
   pull_request:
 
 env:
