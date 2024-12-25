@@ -10,7 +10,6 @@ env:
 
 jobs:
   build:
-    needs: test
     name: Build (${{ matrix.os }}-${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     strategy:
