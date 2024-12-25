@@ -14,3 +14,6 @@ docx-rs = "0.4.17"
 serde = "1.0.215"
 serde_json = "1.0.133"
 toml = "0.8.19"
+
+[build-dependencies]
+cc = "1.0"
