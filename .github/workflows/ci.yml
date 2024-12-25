@@ -1,0 +1,100 @@
+name: Continous Integration
+
+on:
+  pull_request:
+    branches: [ main ]
+
+env:
+  ZIG_VERSION: 0.13.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+      
+      - name: Zig Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/zig
+            zig-cache
+          key: zig-${{ runner.os }}-${{ env.ZIG_VERSION }}
+
+      - name: Run Zig tests
+        run: zig build test
+        
+      - name: Run Rust tests
+        run: cargo test --verbose
+
+  build:
+    needs: test
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+          # Windows builds
+          - os: windows-latest
+            arch: x64
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+          # macOS builds
+          - os: macos-latest
+            arch: x64
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            arch: x86
+            target: i686-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Zig Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/zig
+            zig-cache
+          key: zig-${{ matrix.os }}-${{ matrix.arch }}-${{ env.ZIG_VERSION }}
+
+      - name: Build Zig Project
+        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} -freference-trace
+
+      - name: Build Rust Project
+        run: cargo build --verbose --release --target ${{ matrix.target }}
