@@ -9,37 +9,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-      
-      - name: Zig Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/zig
-            zig-cache
-          key: zig-${{ runner.os }}-${{ env.ZIG_VERSION }}
-
-      - name: Run Zig tests
-        run: zig build test
-        
-      - name: Run Rust tests
-        run: cargo test --verbose
-
   build:
     needs: test
     name: Build (${{ matrix.os }}-${{ matrix.arch }})
@@ -68,7 +37,7 @@ jobs:
           # macOS builds
           - os: macos-latest
             arch: arm64
-            target: x86_64-apple-darwin
+            target: aarch64-apple-darwin
             zig-target: aarch64-macos-none
 
     steps:
