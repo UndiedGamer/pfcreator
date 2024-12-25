@@ -16,7 +16,7 @@
 
 ### 1. Installation
 
-*(Instructions on how to install Pfcreator will go here. Since these were not provided in the original text, this remains a placeholder.) will provide binaries later*
+*Will provide binaries later*
 
 ### 2. Set Up Your Files
 
