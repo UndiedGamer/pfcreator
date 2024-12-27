@@ -30,20 +30,15 @@ jobs:
             arch: arm64
             target: aarch64-unknown-linux-gnu
             zig-target: aarch64-linux-gnu
-          # Windows builds
-          - os: windows-latest
-            arch: x64
-            target: x86_64-pc-windows-msvc
-            zig-target: x86_64-windows-msvc
-          - os: windows-latest
-            arch: arm64
-            target: aarch64-pc-windows-msvc
-            zig-target: aarch64-windows-msvc
           # macOS builds
           - os: macos-latest
             arch: arm64
             target: aarch64-apple-darwin
             zig-target: aarch64-macos-none
+          - os: macos-latest
+            arch: x64
+            target: x86_64-apple-darwin
+            zig-target: x86_64-macos-none
 
     steps:
       - uses: actions/checkout@v4

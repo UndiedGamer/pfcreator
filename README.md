@@ -15,8 +15,19 @@
 ## How to Use
 
 ### 1. Installation
+### Linux and MacOS
+1. Run the installer via 
+```bash
+curl -fsSL https://raw.githubusercontent.com/UndiedGamer/pfcreator/refs/heads/main/install.sh | sh
+```
+2. Source your shell profile (`.bashrc`, `.zshrc`, etc.) or create a new terminal instance to use the `pfcreator` command.
 
-*Will provide binaries later*
+#### Windows
+1. Enable [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install).
+2. Open Ubuntu or your distro of choice in Windows Terminal or from Start Menu.
+3. Follow Linux steps.
+> [!IMPORTANT]
+> WSL ships with gcc/g++ but python does not, you might have to install python inside WSL.
 
 ### 2. Set Up Your Files
 

@@ -139,10 +139,7 @@ pub fn main() !void {
             file.close();
 
             // Create a temporary file for output capture
-            const tmp_output_path = if (builtin.os.tag == .windows)
-                "temp_output.txt"
-            else
-                "/tmp/terminal_output.txt";
+            const tmp_output_path = "/tmp/terminal_output.txt";
 
             // Clear the output file
             {
@@ -172,55 +169,31 @@ pub fn main() !void {
                 }
                 defer std.fs.cwd().deleteFile("./a.out") catch {};
 
-                if (builtin.os.tag == .windows) {
-                    const ps_cmd = try std.fmt.allocPrint(allocator, "& './a.out' | Tee-Object -FilePath '{s}'", .{tmp_output_path});
-                    defer allocator.free(ps_cmd);
+                // Use script command with explicit file
+                const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} ./a.out", .{tmp_output_path});
+                defer allocator.free(shell_cmd);
 
-                    var run_process = std.process.Child.init(&[_][]const u8{ "pwsh", "-Command", ps_cmd }, allocator);
-                    run_process.spawn() catch {
-                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
-                        std.process.exit(1);
-                    };
-                    _ = try run_process.wait();
-                } else {
-                    // Use script command with explicit file
-                    const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} ./a.out", .{tmp_output_path});
-                    defer allocator.free(shell_cmd);
-
-                    var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                    run_process.spawn() catch {
-                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
-                        std.process.exit(1);
-                    };
-                    _ = try run_process.wait();
-                }
+                var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
+                run_process.spawn() catch {
+                    std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                    std.process.exit(1);
+                };
+                _ = try run_process.wait();
 
                 // Read output file directly
                 output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
             } else if (std.mem.eql(u8, extension, ".py")) {
                 const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", entry.name });
                 defer allocator.free(script_path);
-                if (builtin.os.tag == .windows) {
-                    const ps_cmd = try std.fmt.allocPrint(allocator, "python -u {s} | Tee-Object -FilePath '{s}'", .{ script_path, tmp_output_path });
-                    defer allocator.free(ps_cmd);
+                const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
+                defer allocator.free(shell_cmd);
 
-                    var run_process = std.process.Child.init(&[_][]const u8{ "pwsh", "-Command", ps_cmd }, allocator);
-                    run_process.spawn() catch {
-                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
-                        std.process.exit(1);
-                    };
-                    _ = try run_process.wait();
-                } else {
-                    const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
-                    defer allocator.free(shell_cmd);
-
-                    var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
-                    run_process.spawn() catch {
-                        std.debug.print("Failed to run file: {s}\n", .{entry.name});
-                        std.process.exit(1);
-                    };
-                    _ = try run_process.wait();
-                }
+                var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
+                run_process.spawn() catch {
+                    std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                    std.process.exit(1);
+                };
+                _ = try run_process.wait();
 
                 // Read output file directly
                 output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
@@ -280,7 +253,7 @@ pub fn main() !void {
     const rust_executable_path = if (builtin.mode == .Debug)
         "target/release/create-docx"
     else
-        "./create-docx";
+        "/usr/local/bin/create-docx";
 
     var rust_process = std.process.Child.init(&[_][]const u8{ rust_executable_path, dir_path }, allocator);
     rust_process.stderr_behavior = .Pipe;
