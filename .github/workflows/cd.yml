@@ -19,7 +19,7 @@ jobs:
             zig_target: x86_64-windows-msvc
             rust_bin: create-docx.exe
             zig_bin: pfcreator.exe
-            name: pfcreator-Windows-x86_64
+            name: pfcreator-windows-x86_64
             command: build
           - release_for: Windows-aarch64
             os: windows-latest
@@ -27,7 +27,7 @@ jobs:
             zig_target: aarch64-windows-msvc
             rust_bin: create-docx.exe
             zig_bin: pfcreator.exe
-            name: pfcreator-Windows-aarch64
+            name: pfcreator-windows-aarch64
             command: build
           - release_for: macOS-aarch64
             os: macOS-latest
@@ -35,7 +35,7 @@ jobs:
             zig_target: aarch64-macos-none
             rust_bin: create-docx
             zig_bin: pfcreator
-            name: pfcreator-Darwin-aarch64
+            name: pfcreator-darwin-aarch64
             command: build
           - release_for: Linux-x86_64
             os: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
             zig_target: x86_64-linux-gnu
             rust_bin: create-docx
             zig_bin: pfcreator
-            name: pfcreator-Linux-x86_64
+            name: pfcreator-linux-x86_64
             command: build
           - release_for: Linux-aarch64-gnu
             os: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
             zig_target: aarch64-linux-gnu
             rust_bin: create-docx
             zig_bin: pfcreator
-            name: pfcreator-Linux-aarch64
+            name: pfcreator-linux-aarch64
             command: build
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -67,7 +67,7 @@ jobs:
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.platform.zig_target }}
           mkdir -p zig-bins
-          cp zig-out/bin/${{ matrix.platform.zig_bin }} zig-bins/zig-${{ matrix.platform.zig_bin }}
+          cp zig-out/bin/${{ matrix.platform.zig_bin }} zig-bins/${{ matrix.platform.zig_bin }}
 
       - name: Build Rust Binary
         uses: houseabsolute/actions-rust-cross@v0
@@ -84,7 +84,7 @@ jobs:
           # Copy Rust binary
           cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.rust_bin }} ${{ matrix.platform.name }}
           # Copy Zig binary from our temporary location
-          cp zig-bins/zig-${{ matrix.platform.zig_bin }} ${{ matrix.platform.name }}
+          cp zig-bins/${{ matrix.platform.zig_bin }} ${{ matrix.platform.name }}
           tar -czf ${{ matrix.platform.name }}.tar.gz ${{ matrix.platform.name }}
           gh release upload ${{ github.event.release.tag_name }} ${{ matrix.platform.name }}.tar.gz
         env:
