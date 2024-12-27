@@ -4,7 +4,7 @@ set -e
 
 echo "Welcome to the pfcreator installer!"
 echo "This script will install pfcreator on your system."
-RELEASE_URL="https://github.com/UndiedGamer/pfcreator/releases/download/v1.0.0"
+RELEASE_URL="https://github.com/UndiedGamer/pfcreator/releases/latest/download/package.zip"
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
