@@ -56,7 +56,7 @@ jobs:
           key: zig-${{ matrix.os }}-${{ matrix.arch }}-${{ env.ZIG_VERSION }}
 
       - name: Build Zig Project
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.target }} -freference-trac
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=${{ matrix.zig-target }} -freference-trace
 
       - name: Build Rust Project
         uses: houseabsolute/actions-rust-cross@v0
