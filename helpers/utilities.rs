@@ -161,146 +161,178 @@ impl SectionWithTitle {
         paragraphs
     }
 
-    fn parse_code_with_rtf(&self, raw_code: &str, rtf_content: &str) -> Vec<docx_rs::Paragraph> {
-        // Parse RTF using the proper parser
-        let rtf_doc = match RtfDocument::try_from(rtf_content) {
-            Ok(doc) => Some(doc),
-            Err(_) => None,
+    fn parse_code_with_rtf(&self, _raw_code: &str, rtf_content: &str) -> Vec<docx_rs::Paragraph> {
+        let rtf_doc = if let Ok(doc) = RtfDocument::try_from(rtf_content) {
+            Some(doc)
+        } else {
+            None
         };
 
         let mut paragraphs = Vec::new();
 
         if let Some(rtf_doc) = rtf_doc {
-            let raw_lines: Vec<&str> = raw_code.lines().collect();
+            // The RTF parser should handle \par correctly and split into blocks per line
+            // Let's just process each block as potentially being one line
+            let mut current_paragraph = docx_rs::Paragraph::new();
+            let mut current_text = String::new();
+            let mut current_painter: Option<&rtf_parser::Painter> = None;
+            let mut has_content = false;
 
-            // Build a map of text content to formatting - tokenize RTF properly
-            let mut text_format_map = std::collections::HashMap::new();
-
-            // Extract text blocks and their formatting from parsed RTF
             for block in &rtf_doc.body {
-                let clean_text = block.text.replace('\r', "").replace('\n', " ");
-                if !clean_text.trim().is_empty() {
-                    // Split by whitespace and punctuation to get individual tokens
-                    let mut current_token = String::new();
-                    for ch in clean_text.chars() {
-                        match ch {
-                            ' ' | '\t' | '(' | ')' | '{' | '}' | '[' | ']' | ';' | ',' | '.' => {
-                                if !current_token.trim().is_empty() {
-                                    text_format_map.insert(current_token.clone(), &block.painter);
-                                    current_token.clear();
+                let block_text = &block.text;
+
+                // Process each character in the block
+                for ch in block_text.chars() {
+                    if ch == '\r' {
+                        continue; // Skip carriage returns
+                    } else if ch == '\n' {
+                        // End of line - flush current text and finish paragraph
+                        if !current_text.is_empty() {
+                            let mut run = Run::new()
+                                .fonts(
+                                    RunFonts::new()
+                                        .ascii("CaskaydiaCove NF")
+                                        .hi_ansi("CaskaydiaCove NF")
+                                        .east_asia("CaskaydiaCove NF"),
+                                )
+                                .size(20);
+
+                            if let Some(painter) = current_painter {
+                                if painter.bold {
+                                    run = run.bold();
                                 }
-                                if ch != ' ' && ch != '\t' {
-                                    text_format_map.insert(ch.to_string(), &block.painter);
+                                if painter.italic {
+                                    run = run.italic();
+                                }
+                                if painter.underline {
+                                    run = run.underline("single");
+                                }
+
+                                if let Some(color) =
+                                    rtf_doc.header.color_table.get(&painter.color_ref)
+                                {
+                                    let hex_color = format!(
+                                        "{:02x}{:02x}{:02x}",
+                                        color.red, color.green, color.blue
+                                    );
+                                    run = run.color(&hex_color);
                                 }
                             }
-                            _ => current_token.push(ch),
-                        }
-                    }
-                    if !current_token.trim().is_empty() {
-                        text_format_map.insert(current_token, &block.painter);
-                    }
 
-                    // Also add the whole block text as a single token (for compound keywords)
-                    let trimmed_text = clean_text.trim();
-                    if !trimmed_text.is_empty() {
-                        text_format_map.insert(trimmed_text.to_string(), &block.painter);
+                            run = run.add_text(&current_text);
+                            current_paragraph = current_paragraph.add_run(run);
+                            current_text.clear();
+                            has_content = true;
+                        }
+
+                        // Finish current paragraph
+                        if !has_content {
+                            current_paragraph = current_paragraph.add_run(Run::new().add_text(""));
+                        }
+                        paragraphs.push(current_paragraph);
+                        current_paragraph = docx_rs::Paragraph::new();
+                        has_content = false;
+                        current_painter = None;
+                    } else {
+                        // Check if we need to flush due to painter change
+                        let painter_changed = match current_painter {
+                            Some(ref cp) => {
+                                cp.color_ref != block.painter.color_ref
+                                    || cp.bold != block.painter.bold
+                                    || cp.italic != block.painter.italic
+                                    || cp.underline != block.painter.underline
+                            }
+                            None => true,
+                        };
+
+                        if painter_changed && !current_text.is_empty() {
+                            // Flush current text with old painter
+                            if let Some(painter) = current_painter {
+                                let mut run = Run::new()
+                                    .fonts(
+                                        RunFonts::new()
+                                            .ascii("CaskaydiaCove NF")
+                                            .hi_ansi("CaskaydiaCove NF")
+                                            .east_asia("CaskaydiaCove NF"),
+                                    )
+                                    .size(20);
+
+                                if painter.bold {
+                                    run = run.bold();
+                                }
+                                if painter.italic {
+                                    run = run.italic();
+                                }
+                                if painter.underline {
+                                    run = run.underline("single");
+                                }
+
+                                if let Some(color) =
+                                    rtf_doc.header.color_table.get(&painter.color_ref)
+                                {
+                                    let hex_color = format!(
+                                        "{:02x}{:02x}{:02x}",
+                                        color.red, color.green, color.blue
+                                    );
+                                    run = run.color(&hex_color);
+                                }
+
+                                run = run.add_text(&current_text);
+                                current_paragraph = current_paragraph.add_run(run);
+                                has_content = true;
+                            }
+                            current_text.clear();
+                        }
+
+                        // Add character and update painter
+                        let display_char = if ch == '\u{00A0}' { ' ' } else { ch };
+                        current_text.push(display_char);
+                        current_painter = Some(&block.painter);
                     }
                 }
             }
 
-            // Process each line of raw code
-            for raw_line in raw_lines {
-                let mut current_paragraph = docx_rs::Paragraph::new();
-                let mut used_tokens = std::collections::HashSet::new();
+            // Flush any remaining text
+            if !current_text.is_empty() {
+                if let Some(painter) = current_painter {
+                    let mut run = Run::new()
+                        .fonts(
+                            RunFonts::new()
+                                .ascii("CaskaydiaCove NF")
+                                .hi_ansi("CaskaydiaCove NF")
+                                .east_asia("CaskaydiaCove NF"),
+                        )
+                        .size(20);
 
-                // Split line into tokens (words, operators, etc.)
-                let mut line_tokens = Vec::new();
-                let mut current_token = String::new();
-                let mut in_string = false;
-                let mut string_char = '\0';
-
-                for ch in raw_line.chars() {
-                    if in_string {
-                        current_token.push(ch);
-                        if ch == string_char
-                            && !current_token.ends_with("\\\"")
-                            && !current_token.ends_with("\\'")
-                        {
-                            in_string = false;
-                        }
-                    } else {
-                        match ch {
-                            '"' | '\'' => {
-                                if !current_token.is_empty() {
-                                    line_tokens.push(current_token.clone());
-                                    current_token.clear();
-                                }
-                                current_token.push(ch);
-                                in_string = true;
-                                string_char = ch;
-                            }
-                            ' ' | '\t' => {
-                                if !current_token.is_empty() {
-                                    line_tokens.push(current_token.clone());
-                                    current_token.clear();
-                                }
-                                // Preserve whitespace
-                                let mut whitespace = String::new();
-                                whitespace.push(ch);
-                                line_tokens.push(whitespace);
-                            }
-                            '(' | ')' | '{' | '}' | '[' | ']' | ';' | ',' | '.' | '+' | '-'
-                            | '*' | '/' | '=' | '<' | '>' | '!' | '&' | '|' => {
-                                if !current_token.is_empty() {
-                                    line_tokens.push(current_token.clone());
-                                    current_token.clear();
-                                }
-                                line_tokens.push(ch.to_string());
-                            }
-                            _ => {
-                                current_token.push(ch);
-                            }
-                        }
+                    if painter.bold {
+                        run = run.bold();
                     }
-                }
-
-                if !current_token.is_empty() {
-                    line_tokens.push(current_token);
-                }
-
-                // Match tokens with RTF formatting
-                let line_tokens_len = line_tokens.len();
-                for token in line_tokens {
-                    if token.trim().is_empty() {
-                        // Preserve whitespace as-is
-                        let run = Run::new()
-                            .fonts(
-                                RunFonts::new()
-                                    .ascii("CaskaydiaCove NF")
-                                    .hi_ansi("CaskaydiaCove NF")
-                                    .east_asia("CaskaydiaCove NF"),
-                            )
-                            .size(20)
-                            .add_text(&token);
-                        current_paragraph = current_paragraph.add_run(run);
-                    } else {
-                        // Find best matching RTF formatting for this token
-                        let painter =
-                            self.find_best_format_match(&token, &text_format_map, &mut used_tokens);
-                        let run = self.create_formatted_run(&token, painter, &rtf_doc);
-                        current_paragraph = current_paragraph.add_run(run);
+                    if painter.italic {
+                        run = run.italic();
                     }
-                }
+                    if painter.underline {
+                        run = run.underline("single");
+                    }
 
-                if line_tokens_len == 0 {
-                    current_paragraph = current_paragraph.add_run(Run::new().add_text(""));
-                }
+                    if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
+                        let hex_color =
+                            format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
+                        run = run.color(&hex_color);
+                    }
 
+                    run = run.add_text(&current_text);
+                    current_paragraph = current_paragraph.add_run(run);
+                    has_content = true;
+                }
+            }
+
+            // Don't forget the last paragraph
+            if has_content {
                 paragraphs.push(current_paragraph);
             }
         } else {
             // Fallback: use raw code without RTF formatting
-            for line in raw_code.lines() {
+            for line in _raw_code.lines() {
                 let run = Run::new()
                     .fonts(
                         RunFonts::new()
@@ -319,41 +351,6 @@ impl SectionWithTitle {
         }
 
         paragraphs
-    }
-
-    fn create_formatted_run(
-        &self,
-        text: &str,
-        painter: Option<&rtf_parser::Painter>,
-        rtf_doc: &RtfDocument,
-    ) -> Run {
-        let mut run = Run::new()
-            .fonts(
-                RunFonts::new()
-                    .ascii("CaskaydiaCove NF")
-                    .hi_ansi("CaskaydiaCove NF")
-                    .east_asia("CaskaydiaCove NF"),
-            )
-            .size(20);
-
-        if let Some(painter) = painter {
-            if painter.bold {
-                run = run.bold();
-            }
-            if painter.italic {
-                run = run.italic();
-            }
-            if painter.underline {
-                run = run.underline("single");
-            }
-
-            if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
-                let hex_color = format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
-                run = run.color(&hex_color);
-            }
-        }
-
-        run.add_text(text)
     }
 
     fn parse_output_content(&self, output_content: &str) -> Vec<docx_rs::Paragraph> {
@@ -404,70 +401,6 @@ impl SectionWithTitle {
         }
 
         result
-    }
-
-    fn find_best_format_match<'a>(
-        &self,
-        token: &str,
-        format_map: &'a std::collections::HashMap<String, &'a rtf_parser::Painter>,
-        used_tokens: &mut std::collections::HashSet<String>,
-    ) -> Option<&'a rtf_parser::Painter> {
-        // Try exact match first (highest priority)
-        if let Some(painter) = format_map.get(token) {
-            return Some(*painter);
-        }
-
-        // Try case-insensitive exact match
-        let token_lower = token.to_lowercase();
-        for (key, painter) in format_map {
-            if key.to_lowercase() == token_lower {
-                return Some(*painter);
-            }
-        }
-
-        // For Java keywords, try to find them in compound tokens (like "publicclass" or "publicstatic")
-        if token == "class"
-            || token == "static"
-            || token == "public"
-            || token == "void"
-            || token == "int"
-            || token == "import"
-            || token == "new"
-        {
-            for (key, painter) in format_map {
-                if key.contains(token) {
-                    // Don't track used tokens for keywords - multiple keywords can share the same compound token
-                    return Some(*painter);
-                }
-            }
-        }
-
-        // For string literals, try to find any string token in the map
-        if token.starts_with('"') || token.starts_with('\'') {
-            for (key, painter) in format_map {
-                if (key.starts_with('"') || key.starts_with('\'')) && !used_tokens.contains(key) {
-                    used_tokens.insert(key.clone());
-                    return Some(*painter);
-                }
-            }
-        }
-
-        // Only do substring matching for longer tokens or compound identifiers (but not for keywords)
-        if token.len() > 5 && token.chars().all(|c| c.is_alphabetic() || c == '_') {
-            for (key, painter) in format_map {
-                if key.len() > 5
-                    && ((key.len() <= token.len() && token.contains(key))
-                        || (token.len() <= key.len() && key.contains(token)))
-                {
-                    if !used_tokens.contains(key) {
-                        used_tokens.insert(key.clone());
-                        return Some(*painter);
-                    }
-                }
-            }
-        }
-
-        None
     }
 }
 
