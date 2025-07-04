@@ -92,10 +92,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         format!("Failed to write docx document: {}", e)
     })?;
 
-    std::fs::remove_file(&json_path).map_err(|e| {
-        eprintln!("Failed to cleanup output.json: {}", e);
-        format!("Failed to cleanup output.json: {}", e)
-    })?;
+    // std::fs::remove_file(&json_path).map_err(|e| {
+    //     eprintln!("Failed to cleanup output.json: {}", e);
+    //     format!("Failed to cleanup output.json: {}", e)
+    // })?;
 
     println!("Document created successfully at {:?}", path);
     println!("Debug: output.json preserved for inspection");

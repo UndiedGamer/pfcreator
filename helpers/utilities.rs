@@ -162,24 +162,155 @@ impl SectionWithTitle {
     }
 
     fn parse_code_with_rtf(&self, raw_code: &str, rtf_content: &str) -> Vec<docx_rs::Paragraph> {
-        let lines: Vec<&str> = raw_code.split('\n').collect();
-
-        let rtf_doc = if let Ok(doc) = RtfDocument::try_from(rtf_content) {
-            Some(doc)
-        } else {
-            None
+        // Parse RTF using the proper parser
+        let rtf_doc = match RtfDocument::try_from(rtf_content) {
+            Ok(doc) => Some(doc),
+            Err(_) => None,
         };
 
         let mut paragraphs = Vec::new();
-        let mut rtf_token_index = 0;
 
-        for line in lines {
-            if line.trim().is_empty() {
-                paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new().add_text("")));
-            } else {
-                let paragraph =
-                    self.create_line_with_rtf_colors(line, &rtf_doc, &mut rtf_token_index);
-                paragraphs.push(paragraph);
+        if let Some(rtf_doc) = rtf_doc {
+            let raw_lines: Vec<&str> = raw_code.lines().collect();
+
+            // Build a map of text content to formatting - tokenize RTF properly
+            let mut text_format_map = std::collections::HashMap::new();
+
+            // Extract text blocks and their formatting from parsed RTF
+            for block in &rtf_doc.body {
+                let clean_text = block.text.replace('\r', "").replace('\n', " ");
+                if !clean_text.trim().is_empty() {
+                    // Split by whitespace and punctuation to get individual tokens
+                    let mut current_token = String::new();
+                    for ch in clean_text.chars() {
+                        match ch {
+                            ' ' | '\t' | '(' | ')' | '{' | '}' | '[' | ']' | ';' | ',' | '.' => {
+                                if !current_token.trim().is_empty() {
+                                    text_format_map.insert(current_token.clone(), &block.painter);
+                                    current_token.clear();
+                                }
+                                if ch != ' ' && ch != '\t' {
+                                    text_format_map.insert(ch.to_string(), &block.painter);
+                                }
+                            }
+                            _ => current_token.push(ch),
+                        }
+                    }
+                    if !current_token.trim().is_empty() {
+                        text_format_map.insert(current_token, &block.painter);
+                    }
+
+                    // Also add the whole block text as a single token (for compound keywords)
+                    let trimmed_text = clean_text.trim();
+                    if !trimmed_text.is_empty() {
+                        text_format_map.insert(trimmed_text.to_string(), &block.painter);
+                    }
+                }
+            }
+
+            // Process each line of raw code
+            for raw_line in raw_lines {
+                let mut current_paragraph = docx_rs::Paragraph::new();
+                let mut used_tokens = std::collections::HashSet::new();
+
+                // Split line into tokens (words, operators, etc.)
+                let mut line_tokens = Vec::new();
+                let mut current_token = String::new();
+                let mut in_string = false;
+                let mut string_char = '\0';
+
+                for ch in raw_line.chars() {
+                    if in_string {
+                        current_token.push(ch);
+                        if ch == string_char
+                            && !current_token.ends_with("\\\"")
+                            && !current_token.ends_with("\\'")
+                        {
+                            in_string = false;
+                        }
+                    } else {
+                        match ch {
+                            '"' | '\'' => {
+                                if !current_token.is_empty() {
+                                    line_tokens.push(current_token.clone());
+                                    current_token.clear();
+                                }
+                                current_token.push(ch);
+                                in_string = true;
+                                string_char = ch;
+                            }
+                            ' ' | '\t' => {
+                                if !current_token.is_empty() {
+                                    line_tokens.push(current_token.clone());
+                                    current_token.clear();
+                                }
+                                // Preserve whitespace
+                                let mut whitespace = String::new();
+                                whitespace.push(ch);
+                                line_tokens.push(whitespace);
+                            }
+                            '(' | ')' | '{' | '}' | '[' | ']' | ';' | ',' | '.' | '+' | '-'
+                            | '*' | '/' | '=' | '<' | '>' | '!' | '&' | '|' => {
+                                if !current_token.is_empty() {
+                                    line_tokens.push(current_token.clone());
+                                    current_token.clear();
+                                }
+                                line_tokens.push(ch.to_string());
+                            }
+                            _ => {
+                                current_token.push(ch);
+                            }
+                        }
+                    }
+                }
+
+                if !current_token.is_empty() {
+                    line_tokens.push(current_token);
+                }
+
+                // Match tokens with RTF formatting
+                let line_tokens_len = line_tokens.len();
+                for token in line_tokens {
+                    if token.trim().is_empty() {
+                        // Preserve whitespace as-is
+                        let run = Run::new()
+                            .fonts(
+                                RunFonts::new()
+                                    .ascii("CaskaydiaCove NF")
+                                    .hi_ansi("CaskaydiaCove NF")
+                                    .east_asia("CaskaydiaCove NF"),
+                            )
+                            .size(20)
+                            .add_text(&token);
+                        current_paragraph = current_paragraph.add_run(run);
+                    } else {
+                        // Find best matching RTF formatting for this token
+                        let painter =
+                            self.find_best_format_match(&token, &text_format_map, &mut used_tokens);
+                        let run = self.create_formatted_run(&token, painter, &rtf_doc);
+                        current_paragraph = current_paragraph.add_run(run);
+                    }
+                }
+
+                if line_tokens_len == 0 {
+                    current_paragraph = current_paragraph.add_run(Run::new().add_text(""));
+                }
+
+                paragraphs.push(current_paragraph);
+            }
+        } else {
+            // Fallback: use raw code without RTF formatting
+            for line in raw_code.lines() {
+                let run = Run::new()
+                    .fonts(
+                        RunFonts::new()
+                            .ascii("CaskaydiaCove NF")
+                            .hi_ansi("CaskaydiaCove NF")
+                            .east_asia("CaskaydiaCove NF"),
+                    )
+                    .size(20)
+                    .add_text(line);
+                paragraphs.push(docx_rs::Paragraph::new().add_run(run));
             }
         }
 
@@ -190,139 +321,39 @@ impl SectionWithTitle {
         paragraphs
     }
 
-    fn create_line_with_rtf_colors(
+    fn create_formatted_run(
         &self,
-        line: &str,
-        rtf_doc: &Option<RtfDocument>,
-        token_index: &mut usize,
-    ) -> docx_rs::Paragraph {
-        let mut paragraph = docx_rs::Paragraph::new();
-
-        if let Some(rtf_doc) = rtf_doc {
-            self.apply_rtf_colors_simple(line, rtf_doc, token_index, &mut paragraph);
-        } else {
-            let run = Run::new()
-                .fonts(
-                    RunFonts::new()
-                        .ascii("CaskaydiaCove NF")
-                        .hi_ansi("CaskaydiaCove NF")
-                        .east_asia("CaskaydiaCove NF"),
-                )
-                .size(20)
-                .add_text(line);
-            paragraph = paragraph.add_run(run);
-        }
-
-        paragraph
-    }
-
-    fn apply_rtf_colors_simple(
-        &self,
-        line: &str,
+        text: &str,
+        painter: Option<&rtf_parser::Painter>,
         rtf_doc: &RtfDocument,
-        _token_index: &mut usize,
-        paragraph: &mut docx_rs::Paragraph,
-    ) {
-        let mut rtf_token_map = std::collections::HashMap::new();
-        for (i, block) in rtf_doc.body.iter().enumerate() {
-            let text = block.text.trim();
-            if !text.is_empty() {
-                rtf_token_map.insert(text.to_string(), (i, &block.painter));
+    ) -> Run {
+        let mut run = Run::new()
+            .fonts(
+                RunFonts::new()
+                    .ascii("CaskaydiaCove NF")
+                    .hi_ansi("CaskaydiaCove NF")
+                    .east_asia("CaskaydiaCove NF"),
+            )
+            .size(20);
+
+        if let Some(painter) = painter {
+            if painter.bold {
+                run = run.bold();
+            }
+            if painter.italic {
+                run = run.italic();
+            }
+            if painter.underline {
+                run = run.underline("single");
+            }
+
+            if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
+                let hex_color = format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
+                run = run.color(&hex_color);
             }
         }
 
-        // Find consistent color for brackets/braces
-        let bracket_painter = rtf_token_map
-            .get("(")
-            .or_else(|| rtf_token_map.get(")"))
-            .or_else(|| rtf_token_map.get("{"))
-            .or_else(|| rtf_token_map.get("}"))
-            .map(|(_, painter)| *painter);
-
-        let mut remaining_text = line;
-
-        while !remaining_text.is_empty() {
-            let mut found_match = false;
-            let mut best_match_len = 0;
-            let mut best_painter = None;
-
-            // Find longest matching RTF token
-            for (rtf_text, (_, painter)) in &rtf_token_map {
-                if remaining_text.starts_with(rtf_text) && rtf_text.len() > best_match_len {
-                    best_match_len = rtf_text.len();
-                    best_painter = Some(*painter);
-                    found_match = true;
-                }
-            }
-
-            // Handle special cases
-            if !found_match {
-                if remaining_text.starts_with("using namespace") {
-                    if let Some((_, painter)) = rtf_token_map.get("usingnamespace") {
-                        best_match_len = "using namespace".len();
-                        best_painter = Some(*painter);
-                        found_match = true;
-                    }
-                } else if remaining_text.starts_with("#include") {
-                    if let Some((_, painter)) = rtf_token_map.get("#include") {
-                        best_match_len = "#include".len();
-                        best_painter = Some(*painter);
-                        found_match = true;
-                    }
-                }
-            }
-
-            let (text_to_add, painter_to_use) = if found_match {
-                let matched_text = &remaining_text[..best_match_len];
-                (matched_text, best_painter)
-            } else {
-                let ch = remaining_text.chars().next().unwrap();
-                let char_str = &remaining_text[..ch.len_utf8()];
-
-                // Use consistent color for brackets/braces
-                let painter_for_char = if (ch == '(' || ch == ')' || ch == '{' || ch == '}')
-                    && bracket_painter.is_some()
-                {
-                    bracket_painter
-                } else {
-                    None
-                };
-
-                (char_str, painter_for_char)
-            };
-
-            let mut run = Run::new()
-                .fonts(
-                    RunFonts::new()
-                        .ascii("CaskaydiaCove NF")
-                        .hi_ansi("CaskaydiaCove NF")
-                        .east_asia("CaskaydiaCove NF"),
-                )
-                .size(20);
-
-            if let Some(painter) = painter_to_use {
-                if painter.bold {
-                    run = run.bold();
-                }
-                if painter.italic {
-                    run = run.italic();
-                }
-                if painter.underline {
-                    run = run.underline("single");
-                }
-
-                if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
-                    let hex_color =
-                        format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
-                    run = run.color(&hex_color);
-                }
-            }
-
-            run = run.add_text(text_to_add);
-            *paragraph = paragraph.clone().add_run(run);
-
-            remaining_text = &remaining_text[text_to_add.len()..];
-        }
+        run.add_text(text)
     }
 
     fn parse_output_content(&self, output_content: &str) -> Vec<docx_rs::Paragraph> {
@@ -373,6 +404,70 @@ impl SectionWithTitle {
         }
 
         result
+    }
+
+    fn find_best_format_match<'a>(
+        &self,
+        token: &str,
+        format_map: &'a std::collections::HashMap<String, &'a rtf_parser::Painter>,
+        used_tokens: &mut std::collections::HashSet<String>,
+    ) -> Option<&'a rtf_parser::Painter> {
+        // Try exact match first (highest priority)
+        if let Some(painter) = format_map.get(token) {
+            return Some(*painter);
+        }
+
+        // Try case-insensitive exact match
+        let token_lower = token.to_lowercase();
+        for (key, painter) in format_map {
+            if key.to_lowercase() == token_lower {
+                return Some(*painter);
+            }
+        }
+
+        // For Java keywords, try to find them in compound tokens (like "publicclass" or "publicstatic")
+        if token == "class"
+            || token == "static"
+            || token == "public"
+            || token == "void"
+            || token == "int"
+            || token == "import"
+            || token == "new"
+        {
+            for (key, painter) in format_map {
+                if key.contains(token) {
+                    // Don't track used tokens for keywords - multiple keywords can share the same compound token
+                    return Some(*painter);
+                }
+            }
+        }
+
+        // For string literals, try to find any string token in the map
+        if token.starts_with('"') || token.starts_with('\'') {
+            for (key, painter) in format_map {
+                if (key.starts_with('"') || key.starts_with('\'')) && !used_tokens.contains(key) {
+                    used_tokens.insert(key.clone());
+                    return Some(*painter);
+                }
+            }
+        }
+
+        // Only do substring matching for longer tokens or compound identifiers (but not for keywords)
+        if token.len() > 5 && token.chars().all(|c| c.is_alphabetic() || c == '_') {
+            for (key, painter) in format_map {
+                if key.len() > 5
+                    && ((key.len() <= token.len() && token.contains(key))
+                        || (token.len() <= key.len() && key.contains(token)))
+                {
+                    if !used_tokens.contains(key) {
+                        used_tokens.insert(key.clone());
+                        return Some(*painter);
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 

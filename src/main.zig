@@ -59,16 +59,6 @@ pub fn main() !void {
 
     defer allocator.free(full_dir_path);
 
-    // Create output folder for images
-    const output_folder = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "output_images" });
-    defer allocator.free(output_folder);
-    std.fs.cwd().makeDir(output_folder) catch |err| {
-        if (err != error.PathAlreadyExists) {
-            std.debug.print("Failed to create output_images folder\n", .{});
-            std.process.exit(1);
-        }
-    };
-
     const questions_file = try std.fs.path.join(allocator, &[_][]const u8{ full_dir_path, "questions.txt" });
     defer allocator.free(questions_file);
 
@@ -164,6 +154,7 @@ pub fn main() !void {
 
         var exec_command: []u8 = undefined;
         var exec_command_allocated = false;
+        var classpath: []const u8 = "";
 
         // Prepare execution command based on extension
         if (std.mem.eql(u8, extension, ".cpp")) {
@@ -193,29 +184,35 @@ pub fn main() !void {
             exec_command = try std.fmt.allocPrint(allocator, "python {s}", .{script_path});
             exec_command_allocated = true;
         } else if (std.mem.eql(u8, extension, ".java")) {
-            const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, filename });
-            defer allocator.free(script_path);
-
             const class_name = filename[0 .. filename.len - 5];
-            {
-                var compile = std.process.Child.init(&[_][]const u8{ "javac", script_path }, allocator);
-                compile.stdout_behavior = .Pipe;
-                compile.stderr_behavior = .Pipe;
-                compile.spawn() catch {
-                    std.debug.print("Failed to compile file: {s}\n", .{filename});
-                    continue;
-                };
-                _ = try compile.wait();
-            }
+            classpath = full_dir_path[0 .. full_dir_path.len - 1];
 
-            const class_file = try std.fmt.allocPrint(allocator, "{s}{s}.class", .{ full_dir_path, class_name });
+            // Change working directory to the source folder
+            var cwd_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+            const original_cwd = try std.process.getCwd(&cwd_buffer);
+            const original_cwd_owned = try allocator.dupe(u8, original_cwd);
+            defer allocator.free(original_cwd_owned);
+
+            try std.process.changeCurDir(classpath);
+
+            // Debug: List directory contents after changing CWD
+            std.debug.print("Changed to directory: {s}\n", .{classpath});
+
+            // Now exec_command can be simple since we're in the right directory
+            exec_command = try std.fmt.allocPrint(allocator, "javac {s} && java {s}", .{ filename, class_name });
+            exec_command_allocated = true;
+            std.debug.print("Exec command: {s} (in directory: {s})\n", .{ exec_command, classpath });
+
+            // We'll clean up the class file after execution and restore directory
+            const class_file = try std.fmt.allocPrint(allocator, "{s}.class", .{class_name});
             defer {
+                // Clean up class file
                 std.fs.cwd().deleteFile(class_file) catch {};
                 allocator.free(class_file);
-            }
 
-            exec_command = try std.fmt.allocPrint(allocator, "cd {s} && java {s}", .{ full_dir_path, class_name });
-            exec_command_allocated = true;
+                // Restore original working directory
+                std.process.changeCurDir(original_cwd_owned) catch {};
+            }
         }
 
         // Generate code RTF using pygmentize if color flag is set
@@ -267,7 +264,11 @@ pub fn main() !void {
         };
 
         // Use termshot with --raw-write to capture RTF output
-        const termshot_cmd = try std.fmt.allocPrint(allocator, "termshot --no-shadow --show-cmd --raw-write {s} -- {s}", .{ output_rtf_path, exec_command });
+        // For Java files, we need to ensure termshot runs in the correct directory
+        const termshot_cmd = if (std.mem.eql(u8, extension, ".java"))
+            try std.fmt.allocPrint(allocator, "cd \"{s}\" && termshot --no-shadow --show-cmd --raw-write {s} -- \"{s}\"", .{ classpath, output_rtf_path, exec_command })
+        else
+            try std.fmt.allocPrint(allocator, "termshot --no-shadow --show-cmd --raw-write {s} -- {s}", .{ output_rtf_path, exec_command });
         defer allocator.free(termshot_cmd);
 
         var termshot_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", termshot_cmd }, allocator);
