@@ -11,6 +11,7 @@ path = "helpers/main.rs"
 [dependencies]
 anyhow = "1.0.94"
 docx-rs = "0.4.17"
+rtf-parser = "0.4.2"
 serde = "1.0.215"
 serde_json = "1.0.133"
 toml = "0.8.19"

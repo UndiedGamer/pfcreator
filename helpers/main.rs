@@ -10,10 +10,9 @@ pub struct ZigOutput {
     index: usize,
     pub extension: String,
     code: String,
-    output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    code_image: Option<String>,
-    output_image: String,
+    code_rtf: Option<String>,
+    output_rtf: String,
 }
 
 fn get_full_dir_path() -> Result<PathBuf, Box<dyn Error>> {
@@ -67,7 +66,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     json.sort_by(|a, b| a.index.cmp(&b.index));
 
     println!("Creating document with {} entries", json.len());
-    let docx = create_document_from_config(&config, json);
+
+    // Debug each entry
+    for (i, entry) in json.iter().enumerate() {
+        println!(
+            "Entry {}: Index={}, Question={}, Has code_rtf={}, Has output_rtf={}",
+            i + 1,
+            entry.index,
+            entry.question.chars().take(50).collect::<String>(),
+            entry.code_rtf.is_some(),
+            !entry.output_rtf.is_empty()
+        );
+    }
+
+    let docx = create_document_from_config(&config, json)?;
 
     // Create the file and write the docx content
     let file = std::fs::File::create(&path).map_err(|e| {
@@ -80,20 +92,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         format!("Failed to write docx document: {}", e)
     })?;
 
-    // Clean up output.json and output_images folder
     std::fs::remove_file(&json_path).map_err(|e| {
         eprintln!("Failed to cleanup output.json: {}", e);
         format!("Failed to cleanup output.json: {}", e)
     })?;
 
-    let output_images_path = full_dir_path.join("output_images");
-    if output_images_path.exists() {
-        std::fs::remove_dir_all(&output_images_path).map_err(|e| {
-            eprintln!("Failed to cleanup output_images folder: {}", e);
-            format!("Failed to cleanup output_images folder: {}", e)
-        })?;
-    }
-
     println!("Document created successfully at {:?}", path);
+    println!("Debug: output.json preserved for inspection");
     Ok(())
 }
