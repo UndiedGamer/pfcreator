@@ -1,5 +1,7 @@
 use docx_rs::*;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 use crate::ZigOutput;
 
@@ -90,11 +92,11 @@ impl Paragraph {
         let mut run = Run::new().size(self.size * 2);
 
         if self.bold {
-            run = run.bold()
+            run = run.bold();
         }
 
         if self.italic {
-            run = run.italic()
+            run = run.italic();
         }
 
         let replaced = self.replace_text(replacer);
@@ -105,7 +107,6 @@ impl Paragraph {
         for line in lines {
             let inner_run = run
                 .clone()
-                .underline(if self.underline { "_" } else { "" })
                 .color(&self.color.replace("#", ""))
                 .fonts(
                     RunFonts::new()
@@ -130,16 +131,16 @@ impl Paragraph {
             replaced = replaced.replace("{n}", &(replacer.index + 1).to_string());
         }
 
-        if replaced.contains("{question") {
-            replaced = replaced.replace("{question}", &replacer.question)
+        if replaced.contains("{question}") {
+            replaced = replaced.replace("{question}", &replacer.question);
         }
 
         if replaced.contains("{solution}") {
-            replaced = replaced.replace("{solution}", &replacer.code)
+            replaced = replaced.replace("{solution}", &replacer.code);
         }
 
         if replaced.contains("{output}") {
-            replaced = replaced.replace("{output}", &replacer.output)
+            replaced = replaced.replace("{output}", &replacer.output);
         }
 
         replaced
@@ -149,8 +150,52 @@ impl Paragraph {
 impl SectionWithTitle {
     pub fn to_docx(&self, replacer: &ZigOutput) -> Vec<docx_rs::Paragraph> {
         let mut paragraphs = self.title.to_docx(&replacer);
-        paragraphs.extend(self.content.to_docx(&replacer));
+
+        // Check if we should use code image or regular text
+        if self.content.text.contains("{solution}") {
+            if let Some(ref code_image_path) = replacer.code_image {
+                paragraphs.extend(self.insert_image_content(code_image_path));
+            } else {
+                paragraphs.extend(self.content.to_docx(&replacer));
+            }
+        } else if self.content.text.contains("{output}") {
+            // Always insert output image if available
+            paragraphs.extend(self.insert_image_content(&replacer.output_image));
+        }
+
         paragraphs
+    }
+
+    fn insert_image_content(&self, image_path: &str) -> Vec<docx_rs::Paragraph> {
+        if Path::new(image_path).exists() {
+            match self.process_and_embed_image(image_path) {
+                Ok(paragraph) => vec![paragraph],
+                Err(e) => {
+                    eprintln!("Failed to process image {}: {}", image_path, e);
+                    vec![docx_rs::Paragraph::new().add_run(
+                        Run::new().add_text(&format!("[Failed to load image: {}]", image_path)),
+                    )]
+                }
+            }
+        } else {
+            vec![docx_rs::Paragraph::new()
+                .add_run(Run::new().add_text(&format!("[Image not found: {}]", image_path)))]
+        }
+    }
+
+    fn process_and_embed_image(
+        &self,
+        image_path: &str,
+    ) -> Result<docx_rs::Paragraph, Box<dyn std::error::Error>> {
+        let image_data = fs::read(image_path)?;
+
+        let pic = Pic::new(&image_data).size(600 * 9525, 400 * 9525); // Convert pixels to EMUs
+
+        let run = Run::new().add_image(pic);
+
+        Ok(docx_rs::Paragraph::new()
+            .align(self.content.get_alignment())
+            .add_run(run))
     }
 }
 

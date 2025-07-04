@@ -42,7 +42,7 @@ pub fn main() !void {
     var use_color = false;
     var extension_arg: []const u8 = "";
     var dir_path: []const u8 = "";
-    
+
     while (args_it.next()) |arg| {
         if (std.mem.eql(u8, arg, "color")) {
             use_color = true;
@@ -75,7 +75,7 @@ pub fn main() !void {
         };
 
     defer allocator.free(full_dir_path);
-    
+
     // Create output folder for images
     const output_folder = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "output_images" });
     defer allocator.free(output_folder);
@@ -96,7 +96,7 @@ pub fn main() !void {
 
     defer allocator.free(raw_questions);
     var questions_split = std.mem.split(u8, raw_questions, "\n---\n");
-    
+
     // Parse questions with file mapping
     var question_file_map = std.StringHashMap([]const u8).init(allocator);
     defer question_file_map.deinit();
@@ -106,7 +106,7 @@ pub fn main() !void {
     while (questions_split.next()) |question_entry| {
         if (std.mem.indexOf(u8, question_entry, "::")) |sep_pos| {
             const question = std.mem.trim(u8, question_entry[0..sep_pos], " \n\r\t");
-            const filename = std.mem.trim(u8, question_entry[sep_pos + 2..], " \n\r\t");
+            const filename = std.mem.trim(u8, question_entry[sep_pos + 2 ..], " \n\r\t");
             try question_file_map.put(filename, question);
             try questions_list.append(question);
         } else {
@@ -138,7 +138,7 @@ pub fn main() !void {
     while (file_iter.next()) |entry| {
         const filename = entry.key_ptr.*;
         const question = entry.value_ptr.*;
-        
+
         if (!std.mem.endsWith(u8, filename, extension)) {
             continue;
         }
@@ -203,10 +203,10 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, extension, ".py")) {
             const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", filename });
             defer allocator.free(script_path);
-            
+
             exec_command = try std.fmt.allocPrint(allocator, "python {s}", .{filename});
             defer allocator.free(exec_command);
-            
+
             const shell_cmd = try std.fmt.allocPrint(allocator, "script -q {s} python -u {s}", .{ tmp_output_path, script_path });
             defer allocator.free(shell_cmd);
 
@@ -253,19 +253,19 @@ pub fn main() !void {
             output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
         }
 
-        // Generate code image using pygmentize if color flag is set
+        // Generate code image using freeze if color flag is set
         if (use_color) {
-            const code_image_path = try std.fmt.allocPrint(allocator, "{s}output_images/code_{d}.rtf", .{ full_dir_path, index });
+            const code_image_path = try std.fmt.allocPrint(allocator, "{s}output_images/code_{d}.png", .{ full_dir_path, index });
             defer allocator.free(code_image_path);
-            
-            const pygmentize_cmd = try std.fmt.allocPrint(allocator, "cd {s} && pygmentize -f rtf -O style=catppuccin-latte,fontface=\"CaskaydiaCove NF\",fontsize=11 {s} > {s}", .{ full_dir_path, filename, code_image_path });
-            defer allocator.free(pygmentize_cmd);
 
-            var pygmentize_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", pygmentize_cmd }, allocator);
-            pygmentize_process.spawn() catch {
+            const freeze_cmd = try std.fmt.allocPrint(allocator, "cd {s} && freeze {s} --theme catppuccin-latte --font.size 11 --output {s}", .{ full_dir_path, filename, code_image_path });
+            defer allocator.free(freeze_cmd);
+
+            var freeze_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", freeze_cmd }, allocator);
+            freeze_process.spawn() catch {
                 std.debug.print("Failed to generate code image for: {s}\n", .{filename});
             };
-            _ = pygmentize_process.wait() catch {};
+            _ = freeze_process.wait() catch {};
 
             code_image = try allocator.dupe(u8, code_image_path);
         }
@@ -273,18 +273,18 @@ pub fn main() !void {
         // Always generate output image using termshot
         const output_image_path = try std.fmt.allocPrint(allocator, "{s}output_images/output_{d}.png", .{ full_dir_path, index });
         defer allocator.free(output_image_path);
-        
+
         const termshot_cmd = try std.fmt.allocPrint(allocator, "cd {s} && termshot -- \"{s}\"", .{ full_dir_path, exec_command });
         defer allocator.free(termshot_cmd);
 
         var termshot_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", termshot_cmd }, allocator);
         termshot_process.stdout_behavior = .Pipe;
-        
+
         termshot_process.spawn() catch {
             std.debug.print("Failed to generate output image for: {s}\n", .{filename});
             continue;
         };
-        
+
         const termshot_result = termshot_process.wait() catch {
             std.debug.print("Failed to wait for termshot process\n", .{});
             continue;
@@ -294,7 +294,7 @@ pub fn main() !void {
         if (termshot_result == .Exited and termshot_result.Exited == 0) {
             const termshot_output = try termshot_process.stdout.?.reader().readAllAlloc(allocator, std.math.maxInt(usize));
             defer allocator.free(termshot_output);
-            
+
             const output_file = try std.fs.cwd().createFile(output_image_path, .{});
             defer output_file.close();
             try output_file.writeAll(termshot_output);
@@ -342,12 +342,12 @@ pub fn main() !void {
         try std.json.stringify(entry.value_ptr.output, .{}, writer);
         try writer.writeAll(",\n    \"output_image\": ");
         try std.json.stringify(entry.value_ptr.output_image, .{}, writer);
-        
+
         if (entry.value_ptr.code_image) |code_img| {
             try writer.writeAll(",\n    \"code_image\": ");
             try std.json.stringify(code_img, .{}, writer);
         }
-        
+
         try writer.writeAll("\n  }");
     }
 
