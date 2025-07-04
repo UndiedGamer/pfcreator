@@ -197,6 +197,39 @@ pub fn main() !void {
 
                 // Read output file directly
                 output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
+            } else if (std.mem.eql(u8, extension, ".java")) {
+                const script_path = try std.mem.concat(allocator, u8, &[_][]const u8{ full_dir_path, "/", entry.name });
+                defer allocator.free(script_path);
+
+                const class_name = entry.name[0 .. entry.name.len - 5];
+                // Compile with explicit output handling
+                {
+                    var compile = std.process.Child.init(&[_][]const u8{ "javac", script_path }, allocator);
+                    compile.stdout_behavior = .Pipe;
+                    compile.stderr_behavior = .Pipe;
+                    compile.spawn() catch {
+                        std.debug.print("Failed to compile file: {s}\n", .{entry.name});
+                        std.process.exit(1);
+                    };
+                    _ = try compile.wait();
+                }
+                const class_file = try std.fmt.allocPrint(allocator, "{s}/{s}.class", .{ full_dir_path, class_name });
+                defer allocator.free(class_file);
+                defer std.fs.cwd().deleteFile(class_file) catch {};
+
+                // Use script command with explicit file
+                const shell_cmd = try std.fmt.allocPrint(allocator, "cd {s} && script -q {s} java {s}", .{ full_dir_path, tmp_output_path, class_name });
+                defer allocator.free(shell_cmd);
+
+                var run_process = std.process.Child.init(&[_][]const u8{ "bash", "-c", shell_cmd }, allocator);
+                run_process.spawn() catch {
+                    std.debug.print("Failed to run file: {s}\n", .{entry.name});
+                    std.process.exit(1);
+                };
+                _ = try run_process.wait();
+
+                // Read output file directly
+                output = try processOutput(allocator, try std.fs.cwd().readFileAlloc(allocator, tmp_output_path, std.math.maxInt(usize)));
             }
 
             try entries.put(qal.items[index], FEntry{
