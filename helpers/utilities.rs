@@ -6,7 +6,8 @@ use crate::ZigOutput;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DocumentConfig {
-    pub header: Paragraph,
+    #[serde(default)]
+    pub header: Option<Paragraph>,
     pub question: Paragraph,
     pub solution: SectionWithTitle,
     pub output: SectionWithTitle,
@@ -545,8 +546,10 @@ impl DocumentConfig {
         for (index, parsed) in zig_output.iter().enumerate() {
             let mut paragraphs = Vec::new();
 
-            paragraphs.extend(self.header.to_docx(parsed));
-            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            if let Some(header) = &self.header {
+                paragraphs.extend(header.to_docx(parsed));
+                paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
+            }
             paragraphs.extend(self.question.to_docx(parsed));
             paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new()));
             paragraphs.extend(self.solution.to_docx(parsed));
