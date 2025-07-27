@@ -39,6 +39,8 @@ pub struct Paragraph {
     pub margin_bottom: u32,
     #[serde(default = "default_zero")]
     pub indent: u32,
+    #[serde(default = "default_style")]
+    pub style: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,6 +71,9 @@ fn default_line_spacing() -> f32 {
 fn default_zero() -> u32 {
     0
 }
+fn default_style() -> String {
+    "Body".to_string()
+}
 
 impl Paragraph {
     fn get_alignment(&self) -> AlignmentType {
@@ -85,7 +90,11 @@ impl Paragraph {
         let mut paragraphs: Vec<docx_rs::Paragraph> = Vec::new();
 
         if replaced.is_empty() {
-            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new().add_text("")));
+            paragraphs.push(
+                docx_rs::Paragraph::new()
+                    .add_run(Run::new().add_text(""))
+                    .style(&self.style),
+            );
             return paragraphs;
         }
 
@@ -116,7 +125,8 @@ impl Paragraph {
 
             let p = docx_rs::Paragraph::new()
                 .align(self.get_alignment())
-                .add_run(run);
+                .add_run(run)
+                .style(&self.style);
 
             paragraphs.push(p);
         }
@@ -520,6 +530,7 @@ impl Default for Paragraph {
             margin_top: default_zero(),
             margin_bottom: default_zero(),
             indent: default_zero(),
+            style: default_style(),
         }
     }
 }
