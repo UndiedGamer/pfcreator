@@ -72,7 +72,7 @@ fn default_zero() -> u32 {
     0
 }
 fn default_style() -> String {
-    "Body".to_string()
+    "Normal".to_string()
 }
 
 impl Paragraph {
@@ -306,6 +306,9 @@ impl SectionWithTitle {
                     current_paragraph = current_paragraph.add_run(Run::new().add_text(""));
                 }
 
+                // Apply the content style to the paragraph
+                current_paragraph = current_paragraph.style(&self.content.style);
+
                 paragraphs.push(current_paragraph);
             }
         } else {
@@ -320,50 +323,21 @@ impl SectionWithTitle {
                     )
                     .size(20)
                     .add_text(line);
-                paragraphs.push(docx_rs::Paragraph::new().add_run(run));
+                let paragraph = docx_rs::Paragraph::new()
+                    .add_run(run)
+                    .style(&self.content.style);
+                paragraphs.push(paragraph);
             }
         }
 
         if paragraphs.is_empty() {
-            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new().add_text("")));
+            let paragraph = docx_rs::Paragraph::new()
+                .add_run(Run::new().add_text(""))
+                .style(&self.content.style);
+            paragraphs.push(paragraph);
         }
 
         paragraphs
-    }
-
-    fn create_formatted_run(
-        &self,
-        text: &str,
-        painter: Option<&rtf_parser::Painter>,
-        rtf_doc: &RtfDocument,
-    ) -> Run {
-        let mut run = Run::new()
-            .fonts(
-                RunFonts::new()
-                    .ascii("CaskaydiaCove NF")
-                    .hi_ansi("CaskaydiaCove NF")
-                    .east_asia("CaskaydiaCove NF"),
-            )
-            .size(20);
-
-        if let Some(painter) = painter {
-            if painter.bold {
-                run = run.bold();
-            }
-            if painter.italic {
-                run = run.italic();
-            }
-            if painter.underline {
-                run = run.underline("single");
-            }
-
-            if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
-                let hex_color = format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
-                run = run.color(&hex_color);
-            }
-        }
-
-        run.add_text(text)
     }
 
     fn parse_output_content(&self, output_content: &str) -> Vec<docx_rs::Paragraph> {
@@ -372,25 +346,33 @@ impl SectionWithTitle {
 
         for line in cleaned_text.lines() {
             if line.trim().is_empty() {
-                paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new().add_text("")));
+                let paragraph = docx_rs::Paragraph::new()
+                    .add_run(Run::new().add_text(""))
+                    .style(&self.content.style);
+                paragraphs.push(paragraph);
             } else {
-                let paragraph = docx_rs::Paragraph::new().add_run(
-                    Run::new()
-                        .fonts(
-                            RunFonts::new()
-                                .ascii("CaskaydiaCove NF")
-                                .hi_ansi("CaskaydiaCove NF")
-                                .east_asia("CaskaydiaCove NF"),
-                        )
-                        .size(20)
-                        .add_text(line),
-                );
+                let paragraph = docx_rs::Paragraph::new()
+                    .add_run(
+                        Run::new()
+                            .fonts(
+                                RunFonts::new()
+                                    .ascii("CaskaydiaCove NF")
+                                    .hi_ansi("CaskaydiaCove NF")
+                                    .east_asia("CaskaydiaCove NF"),
+                            )
+                            .size(20)
+                            .add_text(line),
+                    )
+                    .style(&self.content.style);
                 paragraphs.push(paragraph);
             }
         }
 
         if paragraphs.is_empty() {
-            paragraphs.push(docx_rs::Paragraph::new().add_run(Run::new().add_text("")));
+            let paragraph = docx_rs::Paragraph::new()
+                .add_run(Run::new().add_text(""))
+                .style(&self.content.style);
+            paragraphs.push(paragraph);
         }
 
         paragraphs
@@ -479,11 +461,86 @@ impl SectionWithTitle {
 
         None
     }
+
+    fn create_formatted_run(
+        &self,
+        text: &str,
+        painter: Option<&rtf_parser::Painter>,
+        rtf_doc: &RtfDocument,
+    ) -> Run {
+        let mut run = Run::new()
+            .fonts(
+                RunFonts::new()
+                    .ascii("CaskaydiaCove NF")
+                    .hi_ansi("CaskaydiaCove NF")
+                    .east_asia("CaskaydiaCove NF"),
+            )
+            .size(20);
+
+        if let Some(painter) = painter {
+            if painter.bold {
+                run = run.bold();
+            }
+            if painter.italic {
+                run = run.italic();
+            }
+            if painter.underline {
+                run = run.underline("single");
+            }
+
+            if let Some(color) = rtf_doc.header.color_table.get(&painter.color_ref) {
+                let hex_color = format!("{:02x}{:02x}{:02x}", color.red, color.green, color.blue);
+                run = run.color(&hex_color);
+            }
+        }
+
+        run.add_text(text)
+    }
 }
 
 impl DocumentConfig {
     pub fn create_document(&self, zig_output: Vec<ZigOutput>) -> docx_rs::Docx {
         let mut doc = Docx::new();
+
+        // Add common Microsoft Word paragraph styles
+        let heading1 = Style::new("Heading1", StyleType::Paragraph).name("Heading 1");
+
+        let heading2 = Style::new("Heading2", StyleType::Paragraph).name("Heading 2");
+
+        let heading3 = Style::new("Heading3", StyleType::Paragraph).name("Heading 3");
+
+        let heading4 = Style::new("Heading4", StyleType::Paragraph).name("Heading 4");
+
+        let heading5 = Style::new("Heading5", StyleType::Paragraph).name("Heading 5");
+
+        let heading6 = Style::new("Heading6", StyleType::Paragraph).name("Heading 6");
+
+        let title = Style::new("Title", StyleType::Paragraph).name("Title");
+
+        let subtitle = Style::new("Subtitle", StyleType::Paragraph).name("Subtitle");
+
+        let normal = Style::new("Normal", StyleType::Paragraph).name("Normal");
+
+        let quote = Style::new("Quote", StyleType::Paragraph).name("Quote");
+
+        let emphasis = Style::new("Emphasis", StyleType::Paragraph).name("Emphasis");
+
+        let strong = Style::new("Strong", StyleType::Paragraph).name("Strong");
+
+        // Add all styles to the document
+        doc = doc
+            .add_style(heading1)
+            .add_style(heading2)
+            .add_style(heading3)
+            .add_style(heading4)
+            .add_style(heading5)
+            .add_style(heading6)
+            .add_style(title)
+            .add_style(subtitle)
+            .add_style(normal)
+            .add_style(quote)
+            .add_style(emphasis)
+            .add_style(strong);
 
         for (index, parsed) in zig_output.iter().enumerate() {
             let mut paragraphs = Vec::new();
